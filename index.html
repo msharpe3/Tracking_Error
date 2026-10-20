@@ -333,6 +333,16 @@ function simpsonsChannel(){
   return {id:uid(),num:61,call:'WTIC',cat:'general',items:[...s4.map((t,i)=>ep(t,4,i+1,1992)),...s5.map((t,i)=>ep(t,5,i+1,1993))]};
 }
 D.added=D.added||{};
+if(!D.added.official){
+  // Bob Ross Inc.'s official YouTube playlist of The Joy of Painting, Season 1 (1983)
+  const BR='https://www.youtube.com/playlist?list=PLAEQD0ULngi69x_7JbQvSMprLRK_KSVLu';
+  const s1=['A Walk in the Woods','Mt. McKinley','Ebony Sunset','Winter Mist','Quiet Stream','Winter Moon','Autumn Mountains','Peaceful Valley','Seascape','Mountain Lake','Winter Glow','Snowfall','Final Reflections'];
+  if(!D.channels.some(c=>c.num===24)) D.channels.push({id:uid(),num:24,call:'CPTV',cat:'general',noAds:true,items:s1.map((t,i)=>({id:uid(),title:'The Joy of Painting',kind:'show',mins:27,rating:'TV-G',year:1983,stars:0,desc:'\u201c'+t+'\u201d \u2022 Season 1, Episode '+(i+1),cc:true,isNew:false,src:BR,plIndex:i,official:'Bob Ross Inc.'}))});
+  // Power Rangers Official: Mighty Morphin Re-Ignition (4K remaster), Episode 1
+  const kids=D.channels.find(c=>c.cat==='kids');
+  if(kids) kids.items.unshift({id:uid(),title:'Mighty Morphin Power Rangers',kind:'kids',mins:21,rating:'TV-Y7',year:1993,stars:0,desc:'\u201cDay of the Dumpster\u201d \u2022 Re-Ignition, Episode 1',cc:true,isNew:false,src:'https://www.youtube.com/watch?v=v2WLFLQhj3o',official:'Power Rangers Official'});
+  D.added.official=1;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}
+}
 if(!D.added.simpsons){if(!D.channels.some(c=>c.num===61))D.channels.push(simpsonsChannel());D.added.simpsons=1;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}}
 function save(){try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}}
 
@@ -479,8 +489,22 @@ function openSegInfo(s){
 const player=$('#player'),media=$('#media');
 let pTimer=null,osdT=null,curCh=null,vEl=null;
 const ytId=u=>(String(u||'').match(/(?:youtu\.be\/|[?&]v=|embed\/|shorts\/|live\/)([\w-]{11})/)||[])[1];
-function mount(src,startSec,isLive){
+const ytList=u=>(String(u||'').match(/[?&]list=([\w-]+)/)||[])[1];
+let ytApi=null;
+function loadYT(){if(ytApi)return ytApi;ytApi=new Promise((res,rej)=>{if(window.YT&&YT.Player)return res(YT);window.onYouTubeIframeAPIReady=()=>res(YT);const sc=document.createElement('script');sc.src='https://www.youtube.com/iframe_api';sc.onerror=rej;document.head.appendChild(sc);setTimeout(()=>rej(new Error('timeout')),6000)});ytApi.catch(()=>{ytApi=null});return ytApi}
+function mount(src,startSec,plIndex){
   startSec=Math.max(0,Math.floor(startSec||0));
+  const list=ytList(src);
+  if(list&&typeof plIndex==='number'){
+    const token=Symbol();mount.token=token;
+    media.innerHTML='<div id="ytp" style="width:100%;height:100%"></div>';
+    const fallback=()=>{if(mount.token!==token)return;media.innerHTML=`<iframe src="https://www.youtube-nocookie.com/embed/videoseries?list=${list}&index=${plIndex}&start=${startSec}&autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Video"></iframe>`};
+    loadYT().then(Y=>{if(mount.token!==token||!document.getElementById('ytp'))return;
+      new Y.Player('ytp',{width:'100%',height:'100%',host:'https://www.youtube-nocookie.com',playerVars:{playsinline:1,rel:0,autoplay:1},
+        events:{onReady:e=>e.target.loadPlaylist({list,listType:'playlist',index:plIndex,startSeconds:startSec}),onError:fallback}})}).catch(fallback);
+    return 'https://www.youtube.com/playlist?list='+list;
+  }
+  mount.token=null;
   const id=ytId(src);
   if(id){media.innerHTML=`<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0&start=${startSec}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Video"></iframe>`;return `https://www.youtube.com/watch?v=${id}&t=${startSec}s`}
   if(src){
@@ -497,7 +521,7 @@ function card(title,msg){
 }
 function showOSD(ch){const o=$('#osd');o.innerHTML=`${ch.num}<span>${esc(ch.call)}</span>`;o.classList.remove('fade');clearTimeout(osdT);osdT=setTimeout(()=>o.classList.add('fade'),3500)}
 function setBar(title,sub,link,live){
-  $('#pinfo').innerHTML=`<b>${live?'<span class="live">LIVE</span>':''}${esc(title)}</b><span>${esc(sub)}</span>${link&&ytId(link)?`<a href="${esc(link)}" target="_blank" rel="noopener">Open on YouTube ↗</a>`:''}`;
+  $('#pinfo').innerHTML=`<b>${live?'<span class="live">LIVE</span>':''}${esc(title)}</b><span>${esc(sub)}</span>${link&&(ytId(link)||ytList(link))?`<a href="${esc(link)}" target="_blank" rel="noopener">Open on YouTube ↗</a>`:''}`;
   $('#pbtns').innerHTML=`${live?'<button class="btn" data-p="up">CH ▲</button><button class="btn" data-p="down">CH ▼</button>':''}<button class="btn dim" data-p="close">GUIDE</button>`;
 }
 $('#pbtns').addEventListener('click',e=>{const a=e.target.closest('[data-p]')?.dataset.p;if(a==='up')surf(1);else if(a==='down')surf(-1);else if(a==='close')closePlayer()});
@@ -505,7 +529,7 @@ function openPlayer(){player.hidden=false}
 function closePlayer(){clearTimeout(pTimer);if(vEl){vEl.pause();vEl.removeAttribute('src')}media.innerHTML='';player.hidden=true;curCh=null;bumpIdle()}
 function playProgram(p,ch){
   clearTimeout(pTimer);curCh=null;openPlayer();$('#osd').classList.add('fade');
-  const link=mount(p.src,0);
+  const link=mount(p.src,0,p.plIndex);
   if(!link) card('NO SIGNAL','No video is linked to “'+p.title+'” yet. Add a YouTube or video link in SETUP.');
   setBar(label(p),(ch?'CH '+ch.num+' '+ch.call+' • ':'')+'From the beginning',link,false);
 }
@@ -530,8 +554,8 @@ function playLive(chId,cont){
   const pc=pcs.find(x=>off>=x.at&&off<x.at+x.len)||pcs[pcs.length-1];
   const into=off-pc.at,left=Math.max(1,pc.len-into),next=()=>playLive(chId,true),where='CH '+ch.num+' '+ch.call;
   if(pc.type==='show'){
-    const link=mount(s.p.src,pc.from+into,true);
-    if(!link) card('NO SIGNAL','No video linked to “'+(s.p.desc&&s.p.title==='The Simpsons'?s.p.desc:s.p.title)+'” yet. The schedule keeps running — add a link in SETUP.');
+    const link=mount(s.p.src,pc.from+into,s.p.plIndex);
+    if(!link) card('NO SIGNAL','No video linked to “'+(s.p.desc&&/^\u201c/.test(s.p.desc)?s.p.desc.split(' \u2022 ')[0]:s.p.title)+'” yet. The schedule keeps running — add a link in SETUP.');
     setBar(label(s.p),where+' • until '+fmt(s.end)+(s.p.desc&&s.p.desc.length<60?' • '+s.p.desc:''),link,true);
     pTimer=setTimeout(next,left*1000+300);return;
   }
@@ -549,7 +573,7 @@ function playLive(chId,cont){
   while(sum<pc.len-tailLen&&k<300){const a=pick(fill,k++);seq.push(a);sum+=L(a)}
   if(tail&&sum<pc.len)seq.push(tail);
   let t=0;
-  for(const a of seq){if(into<t+L(a)){const link=mount(a.src,into-t,true);
+  for(const a of seq){if(into<t+L(a)){const link=mount(a.src,into-t);
     setBar(a.title||'Commercial',where+' • '+back,link,true);
     pTimer=setTimeout(next,Math.min(t+L(a)-into,left)*1000+300);return}t+=L(a)}
   card('STAY TUNED',back);setBar('Commercial Break',where+' • '+back,null,true);pTimer=setTimeout(next,left*1000+300);
