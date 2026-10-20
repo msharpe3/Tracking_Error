@@ -326,6 +326,14 @@ function sample(){
 let D;
 try{D=JSON.parse(localStorage.getItem(LS))}catch(e){D=null}
 if(!D||!D.channels) D=sample();
+function simpsonsChannel(){
+  const s4=['Kamp Krusty','A Streetcar Named Marge','Homer the Heretic','Lisa the Beauty Queen','Treehouse of Horror III','Itchy & Scratchy: The Movie','Marge Gets a Job','New Kid on the Block','Mr. Plow','Lisa’s First Word','Homer’s Triple Bypass','Marge vs. the Monorail','Selma’s Choice','Brother from the Same Planet','I Love Lisa','Duffless','Last Exit to Springfield','So It’s Come to This: A Simpsons Clip Show','The Front','Whacking Day','Marge in Chains','Krusty Gets Kancelled'];
+  const s5=['Homer’s Barbershop Quartet','Cape Feare','Homer Goes to College','Rosebud','Treehouse of Horror IV','Marge on the Lam','Bart’s Inner Child','Boy-Scoutz ’n the Hood','The Last Temptation of Homer','$pringfield','Homer the Vigilante','Bart Gets Famous','Homer and Apu','Lisa vs. Malibu Stacy','Deep Space Homer','Homer Loves Flanders','Bart Gets an Elephant','Burns’ Heir','Sweet Seymour Skinner’s Baadasssss Song','The Boy Who Knew Too Much','Lady Bouvier’s Lover','Secrets of a Successful Marriage'];
+  const ep=(t,se,n,yr)=>({id:uid(),title:'The Simpsons',kind:'show',mins:22,rating:'TV-PG',year:yr,stars:0,desc:'“'+t+'” • Season '+se+', Episode '+n,cc:true,isNew:false,src:''});
+  return {id:uid(),num:61,call:'WTIC',cat:'general',items:[...s4.map((t,i)=>ep(t,4,i+1,1992)),...s5.map((t,i)=>ep(t,5,i+1,1993))]};
+}
+D.added=D.added||{};
+if(!D.added.simpsons){if(!D.channels.some(c=>c.num===61))D.channels.push(simpsonsChannel());D.added.simpsons=1;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}}
 function save(){try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}}
 
 /* ---------- time + schedule ---------- */
@@ -365,7 +373,7 @@ function renderGrid(){
       const a=Math.max(s.start,ws),b=Math.min(s.end,we),L=(a-ws)/(90*MIN)*100,W=(b-a)/(90*MIN)*100;
       const k=s.p.kind==='movie'?'k-movie':s.p.kind==='sports'?'k-sports':s.p.kind==='kids'?'k-kids':'';
       const t=ch.ppv?`<span class="ppvp">$${esc(ch.ppv)}</span> — ${esc(s.p.title)}`:esc(label(s.p));
-      h+=`<div class="cell ${ch.cat==='premium'?'':k}" style="left:calc(${L}% + 1px);width:calc(${W}% - 2px)" data-r="${ri}" data-c="${ci}"><span class="t">${s.start<ws?'<span class="arr">◀</span>':''}${t}${s.end>we?'<span class="arr r">▶</span>':''}</span><span class="tg">${tags(s.p)}</span></div>`;
+      h+=`<div class="cell ${ch.cat==='premium'?'':k}" style="left:calc(${L}% + 1px);width:calc(${W}% - 2px)" data-r="${ri}" data-c="${ci}"><span class="t">${s.start<ws?'<span class="arr">◀</span>':''}${t}${s.end>we?'<span class="arr r">▶</span>':''}</span><span class="tg">${s.p.desc&&/^\u201c/.test(s.p.desc)?`<span style="overflow:hidden">${esc(s.p.desc.split(' \u2022 ')[0])}</span>`:''}${tags(s.p)}</span></div>`;
     });
     h+='</div></div>';
     if(ri%2===1){
@@ -501,26 +509,50 @@ function playProgram(p,ch){
   if(!link) card('NO SIGNAL','No video is linked to “'+p.title+'” yet. Add a YouTube or video link in SETUP.');
   setBar(label(p),(ch?'CH '+ch.num+' '+ch.call+' • ':'')+'From the beginning',link,false);
 }
-function playLive(chId){
-  clearTimeout(pTimer);const ch=chById(chId);if(!ch)return;curCh=chId;openPlayer();showOSD(ch);
+/* A slot = acts of the show with commercial breaks between them, plus a closing break.
+   Premium/PPV channels (and ones marked commercial-free) run uninterrupted. */
+const adFree=ch=>ch.cat==='premium'||!!ch.ppv||!!ch.noAds;
+function pieces(s){
+  const p=s.p,S=(s.end-s.start)/1000,R=Math.min((+p.mins||30)*60,S),G=Math.max(0,S-R),cuts=[];
+  if(!adFree(s.ch)&&G>=30){const acts=p.kind==='movie'?Math.max(1,Math.round(R/1500)):(R<=2400?3:Math.max(2,Math.round(R/900)));for(let i=1;i<acts;i++)cuts.push(R*i/acts)}
+  const each=cuts.length?G*0.6/cuts.length:0,out=[];let pos=0,t=0;
+  cuts.forEach((c,i)=>{out.push({type:'show',from:pos,len:c-pos,at:t,act:i+1});t+=c-pos;pos=c;out.push({type:'break',len:each,at:t});t+=each});
+  out.push({type:'show',from:pos,len:R-pos,at:t,act:cuts.length+1});t+=R-pos;
+  if(S-t>0.5)out.push({type:'break',len:S-t,at:t,last:true});
+  return out;
+}
+function playLive(chId,cont){
+  clearTimeout(pTimer);const ch=chById(chId);if(!ch)return;
+  if(!cont||curCh!==chId)showOSD(ch);curCh=chId;openPlayer();
   const now=Date.now(),s=nowOn(ch);
   if(!s){card('NO SIGNAL','This channel has no programs yet.');setBar(ch.call,'CH '+ch.num,null,true);return}
-  const offS=(now-s.start)/1000,run=(+s.p.mins||30)*60;
-  if(offS<run){
-    const link=mount(s.p.src,offS,true);
-    if(!link) card('NO SIGNAL','No video linked to “'+s.p.title+'” yet. The schedule keeps running — add a link in SETUP.');
-    setBar(label(s.p),'CH '+ch.num+' '+ch.call+' • until '+fmt(s.end),link,true);
-    pTimer=setTimeout(()=>playLive(chId),(run-offS)*1000+500);
-  }else{
-    const pool=D.ads.filter(a=>a.src),left=(s.end-now)/1000;
-    if(!pool.length){card('WE’LL BE RIGHT BACK','Commercial break. Add commercials in SETUP to fill these gaps. Next up at '+fmt(s.end)+'.');setBar('Commercial Break','CH '+ch.num+' '+ch.call+' • back at '+fmt(s.end),null,true);pTimer=setTimeout(()=>playLive(chId),left*1000+500);return}
-    const total=pool.reduce((t,a)=>t+(+a.secs||30),0);let pos=(offS-run)%total,i=0;
-    while(pos>=(+pool[i].secs||30)){pos-=(+pool[i].secs||30);i++}
-    const ad=pool[i],adLeft=(+ad.secs||30)-pos;
-    const link=mount(ad.src,pos,true);
-    setBar(ad.title||'Commercial','CH '+ch.num+' '+ch.call+' • back at '+fmt(s.end),link,true);
-    pTimer=setTimeout(()=>playLive(chId),Math.min(adLeft,left)*1000+300);
+  const off=(now-s.start)/1000,pcs=pieces(s);
+  const pc=pcs.find(x=>off>=x.at&&off<x.at+x.len)||pcs[pcs.length-1];
+  const into=off-pc.at,left=Math.max(1,pc.len-into),next=()=>playLive(chId,true),where='CH '+ch.num+' '+ch.call;
+  if(pc.type==='show'){
+    const link=mount(s.p.src,pc.from+into,true);
+    if(!link) card('NO SIGNAL','No video linked to “'+(s.p.desc&&s.p.title==='The Simpsons'?s.p.desc:s.p.title)+'” yet. The schedule keeps running — add a link in SETUP.');
+    setBar(label(s.p),where+' • until '+fmt(s.end)+(s.p.desc&&s.p.desc.length<60?' • '+s.p.desc:''),link,true);
+    pTimer=setTimeout(next,left*1000+300);return;
   }
+  const backAt=s.start+(pc.at+pc.len)*1000,back=pc.last?'up next at '+fmt(backAt):'back at '+fmt(backAt);
+  const ads=D.ads.filter(a=>a.src&&a.type!=='bumper'),bums=D.ads.filter(a=>a.src&&a.type==='bumper');
+  if(!ads.length&&!bums.length){
+    card(pc.last?'STAY TUNED':'WE’LL BE RIGHT BACK','Commercial break — '+back+'. Import commercials in SETUP → Archive to fill these.');
+    setBar('Commercial Break',where+' • '+back,null,true);pTimer=setTimeout(next,left*1000+300);return;
+  }
+  // same break always plays the same lineup; different breaks rotate through the pool
+  const seed=Math.floor((s.start+pc.at*1000)/60000)*7,L=a=>+a.secs||30,pick=(arr,k)=>arr[(seed+k)%arr.length];
+  const seq=[],tail=bums.length?pick(bums,1):null,tailLen=tail?L(tail):0;let sum=0,k=0;
+  if(bums.length){seq.push(pick(bums,0));sum+=L(seq[0])}
+  const fill=ads.length?ads:bums;
+  while(sum<pc.len-tailLen&&k<300){const a=pick(fill,k++);seq.push(a);sum+=L(a)}
+  if(tail&&sum<pc.len)seq.push(tail);
+  let t=0;
+  for(const a of seq){if(into<t+L(a)){const link=mount(a.src,into-t,true);
+    setBar(a.title||'Commercial',where+' • '+back,link,true);
+    pTimer=setTimeout(next,Math.min(t+L(a)-into,left)*1000+300);return}t+=L(a)}
+  card('STAY TUNED',back);setBar('Commercial Break',where+' • '+back,null,true);pTimer=setTimeout(next,left*1000+300);
 }
 function surf(dir){const list=chs();if(!list.length)return;let i=list.findIndex(c=>c.id===curCh);i=(i+dir+list.length)%list.length;playLive(list[i].id)}
 
@@ -685,8 +717,8 @@ function renderSetup(){
   let b='';
   if(tab==='channels'){
     const ep=ed.pid?chById(ed.ch)?.items.find(p=>p.id===ed.pid):null,e=ep||{};
-    b+=`<p class="note">Each channel loops its lineup around the clock. Shows snap to 30-minute slots, and the leftover time in a slot plays your commercials. Tap a title to edit it.</p>`;
-    b+=chs().map(ch=>`<div class="chsec"><div class="chhead"><b>${ch.num}</b><span>${esc(ch.call)}</span><em>${esc(ch.cat)}${ch.ppv?' • PPV $'+esc(ch.ppv):''}</em><button class="sm" style="margin-left:auto" data-delch="${ch.id}">Delete channel</button></div>
+    b+=`<p class="note">Each channel loops its lineup around the clock. Shows snap to 30-minute slots and the leftover time becomes commercial breaks: two inside each half-hour show, at the act breaks, plus one at the end. Premium, PPV, and ad-free channels run straight through. Tap a title to edit it.</p>`;
+    b+=chs().map(ch=>`<div class="chsec"><div class="chhead"><b>${ch.num}</b><span>${esc(ch.call)}</span><em>${esc(ch.cat)}${ch.ppv?' \u2022 PPV $'+esc(ch.ppv):''}${adFree(ch)?' \u2022 NO ADS':''}</em><button class="sm" data-ads="${ch.id}">${ch.noAds?'Allow ads':ch.cat==='premium'||ch.ppv?'':'Make ad-free'}</button><button class="sm" style="margin-left:auto" data-delch="${ch.id}">Delete channel</button></div>
       <ol class="list">${ch.items.map((p,i)=>`<li><button class="nm" data-editp="${ch.id}|${p.id}">${esc(label(p))}</button><span>${Math.round(p.mins)}m${p.src?' ▶':''}</span><button class="sm" data-mv="${ch.id}|${i}|-1" aria-label="Move up">▲</button><button class="sm" data-mv="${ch.id}|${i}|1" aria-label="Move down">▼</button><button class="sm" data-rmp="${ch.id}|${i}" aria-label="Remove">✕</button></li>`).join('')||'<li><span>Empty lineup</span></li>'}</ol></div>`).join('');
     b+=`<h3>${ep?'EDIT PROGRAM':'ADD A PROGRAM'}</h3><form class="form" id="fProg"><input type="hidden" name="pid" value="${esc(ed.pid||'')}">
       <label>Channel<select name="ch" id="pCh">${chs().map(c=>opt(c.id,ed.ch,c.num+' '+c.call)).join('')}</select></label>
@@ -702,7 +734,7 @@ function renderSetup(){
       <div class="btns wide"><button class="btn go">${ep?'SAVE CHANGES':'ADD TO LINEUP'}</button>${ep?'<button type="button" class="btn dim" data-cancel>CANCEL</button>':''}</div></form>`;
     b+=`<h3>ADD A MOVIE FROM YOUR LIBRARY</h3><div class="inline"><select id="libM" aria-label="Movie">${D.movies.map(m=>opt(m.id,'',m.title)).join('')}</select><select id="libC" aria-label="Channel">${chs().map(c=>opt(c.id,'',c.num+' '+c.call)).join('')}</select><button class="btn" data-libadd>ADD</button></div>`;
     b+=`<h3>NEW CHANNEL</h3><form class="form" id="fCh"><label>Number<input name="num" id="cNum" type="number" min="1" required></label><label>Call sign<input name="call" id="cCall" maxlength="6" required placeholder="MTV"></label>
-      <label>Category<select name="cat" id="cCat">${CATS.map(c=>opt(c,'general')).join('')}</select></label><label>PPV price (optional)<input name="ppv" id="cPpv" placeholder="3.99"></label><div class="btns wide"><button class="btn go">ADD CHANNEL</button></div></form>`;
+      <label>Category<select name="cat" id="cCat">${CATS.map(c=>opt(c,'general')).join('')}</select></label><label>PPV price (optional)<input name="ppv" id="cPpv" placeholder="3.99"></label><label class="chk"><input type="checkbox" name="noAds" id="cNoAds"> Commercial-free</label><div class="btns wide"><button class="btn go">ADD CHANNEL</button></div></form>`;
   }else if(tab==='commercials'){
     b+=`<p class="note">Commercials fill the gap between a show’s runtime and the end of its slot, in order, looping. Paste YouTube links to old ads and set each one’s length in seconds.</p>`;
     b+=`<ol class="list">${D.ads.map((a,i)=>`<li><span style="flex:1;color:#fff;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title||'Commercial')}</span><span>${a.type==='bumper'?'BUMPER \u2022 ':''}${Math.round(a.secs||30)}s</span><button class="sm" data-rmad="${i}" aria-label="Remove">✕</button></li>`).join('')||'<li><span>No commercials yet.</span></li>'}</ol>`;
@@ -764,6 +796,7 @@ setup.addEventListener('click',e=>{
   if((v=d('editp'))){const [c,p]=v.split('|');ed={ch:c,pid:p};renderSetup();setup.querySelector('#fProg')?.scrollIntoView({block:'start'});return}
   if((v=d('editm'))){ed={mid:v};renderSetup();setup.querySelector('#fMov')?.scrollIntoView({block:'start'});return}
   if((v=d('mv'))){const [c,i,dir]=v.split('|'),ch=chById(c),a=+i,b2=a+ +dir;if(ch&&b2>=0&&b2<ch.items.length){[ch.items[a],ch.items[b2]]=[ch.items[b2],ch.items[a]];changed()}return}
+  if((v=d('ads'))){const ch=chById(v);if(ch&&!(ch.cat==='premium'||ch.ppv)){ch.noAds=!ch.noAds;changed()}return}
   if((v=d('rmp'))){const [c,i]=v.split('|');chById(c)?.items.splice(+i,1);return changed()}
   if((v=d('delch'))){const btn=t.closest('[data-delch]');if(btn.dataset.armed){D.channels=D.channels.filter(c=>c.id!==v);changed()}else{btn.dataset.armed=1;btn.textContent='Tap again to delete'}return}
   if((v=d('rmad'))!==undefined){D.ads.splice(+v,1);return changed()}
@@ -793,7 +826,7 @@ setup.addEventListener('submit',e=>{
     if(f.pid){D.channels.forEach(c=>{const i=c.items.findIndex(p=>p.id===f.pid);if(i>-1)c.items.splice(i,1)});ch.items.push(Object.assign({id:f.pid},data));toast('SAVED')}
     else{ch.items.push(Object.assign({id:uid()},data));toast(data.title.toUpperCase()+' ADDED TO CH '+ch.num)}
     ed={ch:ch.id};}
-  else if(id==='fCh'){const num=+f.num;if(D.channels.some(c=>c.num===num)){toast('CHANNEL '+num+' ALREADY EXISTS');return}D.channels.push({id:uid(),num,call:f.call.trim().toUpperCase(),cat:f.cat,ppv:f.ppv.trim()||undefined,items:[]});toast('CHANNEL '+num+' ADDED')}
+  else if(id==='fCh'){const num=+f.num;if(D.channels.some(c=>c.num===num)){toast('CHANNEL '+num+' ALREADY EXISTS');return}D.channels.push({id:uid(),num,call:f.call.trim().toUpperCase(),cat:f.cat,ppv:f.ppv.trim()||undefined,noAds:!!f.noAds,items:[]});toast('CHANNEL '+num+' ADDED')}
   else if(id==='fAd'){if(!ytId(f.src)&&!/^https?:/.test(f.src)){toast('PASTE A YOUTUBE OR VIDEO LINK');return}D.ads.push({title:f.title.trim(),src:f.src.trim(),secs:+f.secs||30});toast('COMMERCIAL ADDED')}
   else if(id==='fMov'){const data={title:f.title.trim(),year:f.year.trim(),genre:f.genre.trim()||'Movies',rating:f.rating.trim(),mins:+f.mins||100,stars:+f.stars||0,src:f.src.trim(),desc:f.desc.trim(),kind:'movie',cc:true,isNew:false};
     if(f.mid){const m=D.movies.find(x=>x.id===f.mid);if(m)Object.assign(m,data);toast('SAVED')}else{D.movies.push(Object.assign({id:uid(),mine:true},data));toast(data.title.toUpperCase()+' ADDED')}ed={}}
