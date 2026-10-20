@@ -450,7 +450,7 @@ function openSegInfo(s){
   info.innerHTML=`<div class="panel bevel sh" role="dialog" aria-label="${esc(p.title)}">
     <div class="ph">CH ${ch.num} ${esc(ch.call)} • ${fmt(s.start)} – ${fmt(s.end)}${onNow?' • ON NOW':''}</div>
     <h2>${ch.ppv?'$'+esc(ch.ppv)+' — ':''}${esc(label(p))}</h2>
-    <div class="meta">${p.year?esc(p.year):''}${p.stars?' • '+stars(p.stars):''} ${tags(p)} <span>${p.mins} MIN</span></div>
+    <div class="meta">${p.year?esc(p.year):''}${p.stars?' • '+stars(p.stars):''} ${tags(p)} <span>${Math.round(p.mins)} MIN</span></div>
     <p>${esc(p.desc||'No description yet.')}</p>
     <div class="btns">
       ${onNow?'<button class="btn go" data-a="live">WATCH LIVE</button>':''}
@@ -469,13 +469,18 @@ function openSegInfo(s){
 
 /* ---------- player ---------- */
 const player=$('#player'),media=$('#media');
-let pTimer=null,osdT=null,curCh=null;
+let pTimer=null,osdT=null,curCh=null,vEl=null;
 const ytId=u=>(String(u||'').match(/(?:youtu\.be\/|[?&]v=|embed\/|shorts\/|live\/)([\w-]{11})/)||[])[1];
 function mount(src,startSec,isLive){
   startSec=Math.max(0,Math.floor(startSec||0));
   const id=ytId(src);
   if(id){media.innerHTML=`<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0&start=${startSec}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Video"></iframe>`;return `https://www.youtube.com/watch?v=${id}&t=${startSec}s`}
-  if(src){media.innerHTML=`<video src="${esc(src)}" playsinline autoplay controls></video>`;const v=media.querySelector('video');v.addEventListener('loadedmetadata',()=>{try{v.currentTime=startSec}catch(e){}},{once:true});return src}
+  if(src){
+    if(!vEl){vEl=document.createElement('video');vEl.setAttribute('playsinline','');vEl.controls=true;vEl.autoplay=true;
+      vEl.addEventListener('error',()=>{if(vEl.getAttribute('src')&&!player.hidden)card('NO SIGNAL','This video wouldn\u2019t load. If you\u2019re in Claude\u2019s preview, outside videos are blocked \u2014 it plays on the live site.')})}
+    media.replaceChildren(vEl);vEl.src=src;
+    vEl.addEventListener('loadedmetadata',()=>{try{vEl.currentTime=startSec}catch(e){}vEl.play().catch(()=>{})},{once:true});
+    vEl.load();return src}
   return null;
 }
 function card(title,msg){
@@ -489,7 +494,7 @@ function setBar(title,sub,link,live){
 }
 $('#pbtns').addEventListener('click',e=>{const a=e.target.closest('[data-p]')?.dataset.p;if(a==='up')surf(1);else if(a==='down')surf(-1);else if(a==='close')closePlayer()});
 function openPlayer(){player.hidden=false}
-function closePlayer(){clearTimeout(pTimer);media.innerHTML='';player.hidden=true;curCh=null;bumpIdle()}
+function closePlayer(){clearTimeout(pTimer);if(vEl){vEl.pause();vEl.removeAttribute('src')}media.innerHTML='';player.hidden=true;curCh=null;bumpIdle()}
 function playProgram(p,ch){
   clearTimeout(pTimer);curCh=null;openPlayer();$('#osd').classList.add('fade');
   const link=mount(p.src,0);
@@ -565,10 +570,10 @@ function renderOD(){
   od.innerHTML=`<div class="odhead sh"><div class="logo"><b>3</b><span>ON DEMAND<br>YOUR LIBRARY</span></div><span class="clk" id="odClock">${fmt(Date.now())}</span></div>
   <div class="odbody sh">
     ${f?`<div class="hero bevel"><div>${poster(f)}</div><div><div class="ph" style="font:700 12px var(--body);letter-spacing:.14em;color:var(--text-y)">FEATURED • ${esc(f.genre||'Movie')}</div><h2>${esc(f.title)}</h2>
-      <div class="meta" style="display:flex;gap:6px;flex-wrap:wrap;font:700 13px var(--body);margin-top:4px">${esc(f.year||'')} ${f.stars?'• '+stars(f.stars):''} ${tags(f)} <span>${f.mins||'?'} MIN</span></div>
+      <div class="meta" style="display:flex;gap:6px;flex-wrap:wrap;font:700 13px var(--body);margin-top:4px">${esc(f.year||'')} ${f.stars?'• '+stars(f.stars):''} ${tags(f)} <span>${f.mins?Math.round(f.mins):'?'} MIN</span></div>
       <p>${esc(f.desc||'')}</p><div class="btns"><button class="btn go" data-m="${f.id}">DETAILS</button><button class="btn" data-pick="1">PICK FOR ME</button></div></div></div>`
       :`<p class="note">No movies yet. Add your collection in SETUP → Movies.</p>`}
-    ${shelves(ms).map(([g,list])=>`<h3 class="shelfh">${esc(g.toUpperCase())} <span style="color:#c9d2ff;font-size:12px">${list.length}</span></h3><div class="shelf">${list.map(m=>`<button class="box" data-m="${m.id}">${poster(m)}<small>${m.mins||'?'} MIN • ${esc(m.rating||'')}</small></button>`).join('')}</div>`).join('')}
+    ${shelves(ms).map(([g,list])=>`<h3 class="shelfh">${esc(g.toUpperCase())} <span style="color:#c9d2ff;font-size:12px">${list.length}</span></h3><div class="shelf">${list.map(m=>`<button class="box" data-m="${m.id}">${poster(m)}<small>${m.mins?Math.round(m.mins):'?'} MIN • ${esc(m.rating||'')}</small></button>`).join('')}</div>`).join('')}
   </div>`;
 }
 od.addEventListener('click',e=>{
@@ -577,7 +582,7 @@ od.addEventListener('click',e=>{
 });
 function openMovieInfo(m){
   info.innerHTML=`<div class="panel bevel sh" role="dialog" aria-label="${esc(m.title)}"><div class="ph">ON DEMAND • ${esc(m.genre||'Movie')}</div><h2>${esc(m.title)}</h2>
-   <div class="meta">${esc(m.year||'')}${m.stars?' • '+stars(m.stars):''} ${tags(m)} <span>${m.mins||'?'} MIN</span>${m.format?` <span class="tag">${esc(m.format.toUpperCase())}</span>`:''}</div><p>${esc(m.desc||'No description yet.')}</p>
+   <div class="meta">${esc(m.year||'')}${m.stars?' • '+stars(m.stars):''} ${tags(m)} <span>${m.mins?Math.round(m.mins):'?'} MIN</span>${m.format?` <span class="tag">${esc(m.format.toUpperCase())}</span>`:''}</div><p>${esc(m.desc||'No description yet.')}</p>
    ${m.director||m.cast?.length?`<p class="credits">${m.director?'Directed by '+esc(m.director):''}${m.director&&m.cast?.length?' • ':''}${m.cast?.length?'With '+esc(m.cast.slice(0,4).join(', ')):''}</p>`:''}
    <div class="btns">${m.src?'<button class="btn go" data-a="play">PLAY</button>':'<button class="btn dim" disabled>NOT RIPPED YET</button>'}${m.trailer?`<a class="btn" href="${esc(m.trailer)}" target="_blank" rel="noopener" style="text-decoration:none;color:#fff">TRAILER ↗</a>`:''}<button class="btn" data-a="edit">${m.src?'EDIT':'ADD VIDEO LINK'}</button><button class="btn dim" data-a="close">CLOSE</button></div>
    <div class="inline"><select id="addToCh" aria-label="Channel">${chs().map(c=>`<option value="${c.id}">${c.num} ${esc(c.call)}</option>`).join('')}</select><button class="btn" data-a="add">ADD TO CHANNEL</button></div></div>`;
@@ -633,6 +638,41 @@ function importArchive(arr,clearSamples){
   return {added,updated};
 }
 
+/* ---------- Internet Archive ---------- */
+let IA={url:'',id:'',title:'',clips:[],busy:false,err:'',as:'commercial'};
+const dur=s=>{s=Math.round(s||0);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
+function secsOf(v){if(v==null)return 0;const s=String(v);if(s.includes(':'))return s.split(':').reduce((t,n)=>t*60+(+n||0),0);return +s||0}
+const iaId=u=>{u=String(u||'').trim();const m=u.match(/archive\.org\/(?:details|download|embed|stream)\/([^/?#\s]+)/i);return m?decodeURIComponent(m[1]):(/^[\w.-]+$/.test(u)?u:'')};
+async function iaLookup(url){
+  const id=iaId(url);IA={...IA,url,id,clips:[],err:'',busy:true};renderSetup();
+  if(!id){IA.busy=false;IA.err='That doesn\u2019t look like an archive.org link. It should look like archive.org/details/something.';return renderSetup()}
+  try{
+    const r=await fetch('https://archive.org/metadata/'+encodeURIComponent(id));
+    const j=await r.json();if(!j||!j.files||!j.files.length)throw new Error('empty');
+    const files=j.files,vid=/\.(mp4|m4v|webm|ogv|mov|mpe?g|avi|mkv|wmv|flv)$/i,play=/\.(mp4|m4v|webm)$/i;
+    const originals=files.filter(f=>f.source==='original'&&vid.test(f.name));
+    const pickFor=o=>play.test(o.name)&&!/\.mov$/i.test(o.name)?o:files.filter(f=>f.source==='derivative'&&f.original===o.name&&/\.mp4$/i.test(f.name)).sort((a,b)=>(/\.ia\.mp4$/i.test(a.name)?1:0)-(/\.ia\.mp4$/i.test(b.name)?1:0))[0];
+    let list=originals.map(o=>{const f=pickFor(o);return f&&{f,o}}).filter(Boolean);
+    if(!list.length) list=files.filter(f=>play.test(f.name)).map(f=>({f,o:f}));
+    const seen=new Set();
+    IA.clips=list.filter(({f})=>!seen.has(f.name)&&seen.add(f.name)).map(({f,o})=>({
+      title:(o.title||f.title||o.name.replace(/^.*\//,'').replace(/\.[^.]+$/,'')).replace(/[_]+/g,' ').trim(),
+      secs:secsOf(o.length)||secsOf(f.length),
+      url:'https://archive.org/download/'+encodeURIComponent(id)+'/'+f.name.split('/').map(encodeURIComponent).join('/'),on:true}))
+      .sort((a,b)=>a.title.localeCompare(b.title,undefined,{numeric:true}));
+    const t=j.metadata&&j.metadata.title;IA.title=Array.isArray(t)?t[0]:(t||id);
+    if(!IA.clips.length) IA.err='That upload has no playable videos.';
+  }catch(e){IA.err='Couldn\u2019t reach the Internet Archive. If you\u2019re in Claude\u2019s preview, outside sites are blocked \u2014 this works on the live site. Otherwise check the link and try again.'}
+  IA.busy=false;renderSetup();
+}
+function iaImport(f){
+  const picks=IA.clips.filter(c=>c.on);let n=0;
+  if(f.as==='commercial'||f.as==='bumper') picks.forEach(c=>{if(!D.ads.some(a=>a.src===c.url)){D.ads.push({title:c.title,src:c.url,secs:c.secs||30,type:f.as,from:IA.id});n++}});
+  else if(f.as==='episode'){const ch=chById(f.ch);if(!ch)return 0;picks.forEach(c=>{ch.items.push({id:uid(),title:f.series.trim()||c.title,kind:f.kind,mins:(c.secs||1320)/60,rating:f.rating.trim(),year:'',stars:0,desc:c.title,cc:true,isNew:false,src:c.url});n++})}
+  else picks.forEach(c=>{if(!D.movies.some(m=>m.src===c.url)){D.movies.push({id:uid(),mine:true,title:c.title,year:'',genre:f.genre.trim()||'Movies',rating:'',mins:(c.secs||0)/60,stars:0,desc:'From the Internet Archive: '+IA.title,src:c.url,format:'Archive',kind:'movie',cc:true,isNew:false});n++}});
+  return n;
+}
+
 /* ---------- setup ---------- */
 const setup=$('#setup');let tab='channels',ed={};
 $('#bSetup').onclick=()=>openSetup(tab);
@@ -641,13 +681,13 @@ function closeSetup(){setup.hidden=true;setup.innerHTML=''}
 const opt=(v,cur,lbl)=>`<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(lbl??v)}</option>`;
 const KINDS=['show','movie','sports','kids','news'],CATS=['general','movies','sports','kids','premium'];
 function renderSetup(){
-  const T=['channels','commercials','movies','settings','backup'];
+  const T=['channels','commercials','movies','archive','settings','backup'];
   let b='';
   if(tab==='channels'){
     const ep=ed.pid?chById(ed.ch)?.items.find(p=>p.id===ed.pid):null,e=ep||{};
     b+=`<p class="note">Each channel loops its lineup around the clock. Shows snap to 30-minute slots, and the leftover time in a slot plays your commercials. Tap a title to edit it.</p>`;
     b+=chs().map(ch=>`<div class="chsec"><div class="chhead"><b>${ch.num}</b><span>${esc(ch.call)}</span><em>${esc(ch.cat)}${ch.ppv?' • PPV $'+esc(ch.ppv):''}</em><button class="sm" style="margin-left:auto" data-delch="${ch.id}">Delete channel</button></div>
-      <ol class="list">${ch.items.map((p,i)=>`<li><button class="nm" data-editp="${ch.id}|${p.id}">${esc(label(p))}</button><span>${p.mins}m${p.src?' ▶':''}</span><button class="sm" data-mv="${ch.id}|${i}|-1" aria-label="Move up">▲</button><button class="sm" data-mv="${ch.id}|${i}|1" aria-label="Move down">▼</button><button class="sm" data-rmp="${ch.id}|${i}" aria-label="Remove">✕</button></li>`).join('')||'<li><span>Empty lineup</span></li>'}</ol></div>`).join('');
+      <ol class="list">${ch.items.map((p,i)=>`<li><button class="nm" data-editp="${ch.id}|${p.id}">${esc(label(p))}</button><span>${Math.round(p.mins)}m${p.src?' ▶':''}</span><button class="sm" data-mv="${ch.id}|${i}|-1" aria-label="Move up">▲</button><button class="sm" data-mv="${ch.id}|${i}|1" aria-label="Move down">▼</button><button class="sm" data-rmp="${ch.id}|${i}" aria-label="Remove">✕</button></li>`).join('')||'<li><span>Empty lineup</span></li>'}</ol></div>`).join('');
     b+=`<h3>${ep?'EDIT PROGRAM':'ADD A PROGRAM'}</h3><form class="form" id="fProg"><input type="hidden" name="pid" value="${esc(ed.pid||'')}">
       <label>Channel<select name="ch" id="pCh">${chs().map(c=>opt(c.id,ed.ch,c.num+' '+c.call)).join('')}</select></label>
       <label>Title<input name="title" id="pTitle" required value="${esc(e.title||'')}"></label>
@@ -665,7 +705,7 @@ function renderSetup(){
       <label>Category<select name="cat" id="cCat">${CATS.map(c=>opt(c,'general')).join('')}</select></label><label>PPV price (optional)<input name="ppv" id="cPpv" placeholder="3.99"></label><div class="btns wide"><button class="btn go">ADD CHANNEL</button></div></form>`;
   }else if(tab==='commercials'){
     b+=`<p class="note">Commercials fill the gap between a show’s runtime and the end of its slot, in order, looping. Paste YouTube links to old ads and set each one’s length in seconds.</p>`;
-    b+=`<ol class="list">${D.ads.map((a,i)=>`<li><span style="flex:1;color:#fff">${esc(a.title||'Commercial')}</span><span>${a.secs||30}s</span><button class="sm" data-rmad="${i}" aria-label="Remove">✕</button></li>`).join('')||'<li><span>No commercials yet.</span></li>'}</ol>`;
+    b+=`<ol class="list">${D.ads.map((a,i)=>`<li><span style="flex:1;color:#fff;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title||'Commercial')}</span><span>${a.type==='bumper'?'BUMPER \u2022 ':''}${Math.round(a.secs||30)}s</span><button class="sm" data-rmad="${i}" aria-label="Remove">✕</button></li>`).join('')||'<li><span>No commercials yet.</span></li>'}</ol>`;
     b+=`<form class="form" id="fAd"><label>Name<input name="title" id="aTitle" placeholder="1996 cereal ad"></label><label>Length (sec)<input name="secs" id="aSecs" type="number" min="5" value="30"></label><label class="wide">YouTube link<input name="src" id="aSrc" required placeholder="https://youtu.be/…"></label><div class="btns wide"><button class="btn go">ADD COMMERCIAL</button></div></form>`;
   }else if(tab==='movies'){
     const em=D.movies.find(m=>m.id===ed.mid),e=em||{};
@@ -683,6 +723,24 @@ function renderSetup(){
       <label>Runtime (min)<input name="mins" id="mMins" type="number" min="1" value="${esc(e.mins||100)}"></label><label>Stars (0–5)<input name="stars" id="mStars" type="number" min="0" max="5" step=".5" value="${esc(e.stars??3)}"></label>
       <label class="wide">Video link (once ripped)<input name="src" id="mSrc" value="${esc(e.src||'')}"></label><label class="wide">Description<textarea name="desc" id="mDesc" rows="2">${esc(e.desc||'')}</textarea></label>
       <div class="btns wide"><button class="btn go">${em?'SAVE CHANGES':'ADD MOVIE'}</button>${em?'<button type="button" class="btn dim" data-cancel>CANCEL</button>':''}</div></form>`;
+  }else if(tab==='archive'){
+    b+=`<p class="note">Paste an Internet Archive link (archive.org/details/\u2026). Every video in that upload is listed with its real length, ready to import as commercials, bumpers, show episodes, or movies.</p>
+      <form class="inline" id="fIA"><input name="url" id="iaUrl" style="flex:1;min-width:200px" placeholder="https://archive.org/details/\u2026" value="${esc(IA.url)}" required><button class="btn go">LOOK UP</button></form>`;
+    if(IA.busy) b+=`<p class="note blink">LOOKING UP\u2026</p>`;
+    else if(IA.err) b+=`<p class="note" style="color:var(--hl)">${esc(IA.err)}</p>`;
+    else if(IA.clips.length){
+      const n=IA.clips.filter(c=>c.on).length,tot=IA.clips.filter(c=>c.on).reduce((t,c)=>t+c.secs,0);
+      b+=`<div class="chsec"><div class="chhead"><span style="font-weight:700">${esc(IA.title)}</span><em>${IA.clips.length} videos</em><button class="sm" style="margin-left:auto" data-iaall>${n===IA.clips.length?'Select none':'Select all'}</button></div>
+        <ol class="list" style="max-height:240px;overflow-y:auto">${IA.clips.map((c,i)=>`<li><label style="display:flex;gap:6px;align-items:center;flex:1;min-width:0"><input type="checkbox" data-iac="${i}" ${c.on?'checked':''}><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff">${esc(c.title)}</span></label><span>${dur(c.secs)}</span></li>`).join('')}</ol></div>
+        <form class="form" id="fIAimp">
+          <label>Import as<select name="as" id="iaAs">${[['commercial','Commercials'],['bumper','Station IDs & bumpers'],['episode','Show episodes'],['movie','Movies (On Demand)']].map(([v,l])=>opt(v,IA.as,l)).join('')}</select></label>
+          ${IA.as==='episode'?`<label>Channel<select name="ch" id="iaCh">${chs().map(c=>opt(c.id,'',c.num+' '+c.call)).join('')}</select></label>
+          <label>Show name<input name="series" id="iaSeries" value="${esc(IA.title)}" required></label>
+          <label>Type<select name="kind" id="iaKind">${KINDS.map(k=>opt(k,'show')).join('')}</select></label>
+          <label>Rating<input name="rating" id="iaRating" value="TV-PG"></label>`:''}
+          ${IA.as==='movie'?`<label>Genre<input name="genre" id="iaGenre" value="Movies"></label>`:''}
+          <div class="btns wide"><button class="btn go" ${n?'':'disabled'}>IMPORT ${n} \u2022 ${dur(tot)}</button></div></form>`;
+    }
   }else if(tab==='settings'){
     b+=`<form class="form" id="fSet"><label>Weather town<input name="town" id="sTown" value="${esc(D.settings.town)}"></label><label>Temperature °F<input name="temp" id="sTemp" type="number" value="${esc(D.settings.temp)}"></label>
       <label class="wide">Preview window clip (YouTube, plays muted on loop)<input name="promo" id="sPromo" value="${esc(D.settings.promo)}" placeholder="Leave empty for rotating Now/Tonight cards"></label>
@@ -701,6 +759,7 @@ setup.addEventListener('click',e=>{
   const d=k=>t.closest(`[data-${k}]`)?.dataset[k];
   let v;
   if((v=d('tab'))){tab=v;ed={};return renderSetup()}
+  if(t.closest('[data-iaall]')){const all=IA.clips.every(c=>c.on);IA.clips.forEach(c=>c.on=!all);return renderSetup()}
   if(t.closest('[data-cancel]')){ed={};return renderSetup()}
   if((v=d('editp'))){const [c,p]=v.split('|');ed={ch:c,pid:p};renderSetup();setup.querySelector('#fProg')?.scrollIntoView({block:'start'});return}
   if((v=d('editm'))){ed={mid:v};renderSetup();setup.querySelector('#fMov')?.scrollIntoView({block:'start'});return}
@@ -721,8 +780,15 @@ setup.addEventListener('click',e=>{
   if(t.closest('[data-restore]')){try{const n=JSON.parse($('#bIn').value);if(!n.channels||!n.movies)throw 0;D=Object.assign(sample(),n);changed();toast('BACKUP LOADED')}catch(err){toast('THAT TEXT IS NOT A TRACKING ERROR BACKUP')}return}
   if(t.closest('[data-reset]')){const btn=t.closest('[data-reset]');if(btn.dataset.armed){D=sample();changed();toast('SAMPLE LINEUP RESTORED')}else{btn.dataset.armed=1;btn.textContent='TAP AGAIN TO ERASE EVERYTHING'}return}
 });
+setup.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.iac!==undefined){IA.clips[+t.dataset.iac].on=t.checked;const sb=setup.scrollTop,lb=setup.querySelector('.list')?.scrollTop;renderSetup();const l=setup.querySelector('.list');if(l)l.scrollTop=lb}
+  else if(t.id==='iaAs'){IA.as=t.value;renderSetup()}
+});
 setup.addEventListener('submit',e=>{
   e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),id=e.target.id;
+  if(id==='fIA'){iaLookup(f.url);return}
+  if(id==='fIAimp'){const n=iaImport(f);toast(n?`IMPORTED ${n} ${f.as==='episode'?'EPISODES':f.as==='movie'?'MOVIES':f.as==='bumper'?'BUMPERS':'COMMERCIALS'}`:'NOTHING NEW TO IMPORT');changed();return}
   if(id==='fProg'){const ch=chById(f.ch);if(!ch)return;const data={title:f.title.trim(),kind:f.kind,mins:+f.mins||22,rating:f.rating.trim(),year:f.year.trim(),stars:+f.stars||0,isNew:!!f.isNew,src:f.src.trim(),desc:f.desc.trim(),cc:true};
     if(f.pid){D.channels.forEach(c=>{const i=c.items.findIndex(p=>p.id===f.pid);if(i>-1)c.items.splice(i,1)});ch.items.push(Object.assign({id:f.pid},data));toast('SAVED')}
     else{ch.items.push(Object.assign({id:uid()},data));toast(data.title.toUpperCase()+' ADDED TO CH '+ch.num)}
