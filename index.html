@@ -133,9 +133,13 @@ select,input,textarea{font:14px var(--body);background:#000;color:#fff;border:2p
 textarea{width:100%;resize:vertical}
 
 /* Player */
-#player{background:#000;padding:0;flex-direction:column}
-#media{position:relative;flex:1;width:100%;min-height:0;display:flex;align-items:center;justify-content:center}
-#media iframe,#media video{width:100%;height:100%;border:0;background:#000}
+#player{background:#000;padding:0;display:block}
+#media{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;cursor:pointer}
+#media video{width:100%;height:100%;object-fit:contain;background:#000;pointer-events:none}
+#media video::-webkit-media-controls{display:none!important}
+.snow{position:absolute;inset:0;width:100%;height:100%;z-index:6;image-rendering:pixelated;pointer-events:none}
+.tune{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}
+.tune b{font:clamp(18px,3.4vw,28px) var(--display);letter-spacing:.14em;color:var(--ok);text-shadow:3px 3px 0 #000;padding:10px 16px;border:3px solid var(--ok)}
 .bars{position:absolute;inset:0;display:flex;flex-direction:column}
 .bars .c{flex:1;display:flex}
 .bars .c i{flex:1}
@@ -145,11 +149,11 @@ textarea{width:100%;resize:vertical}
 .osd{position:absolute;top:16px;left:20px;z-index:4;display:flex;align-items:baseline;gap:10px;color:var(--ok);font:44px/1 var(--display);text-shadow:3px 3px 0 #000;transition:opacity .3s}
 .osd span{font-size:18px;letter-spacing:.12em}
 .osd.fade{opacity:0}
-.pbar{width:100%;display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;padding:10px 14px;background:linear-gradient(180deg,#0b1d78,#050f45);border-top:2px solid var(--line)}
+.pbar{position:absolute;left:0;right:0;bottom:0;z-index:7;transition:opacity .4s;display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;padding:10px 14px;background:linear-gradient(180deg,#0b1d78,#050f45);border-top:2px solid var(--line)}
 .pinfo{min-width:0;display:flex;flex-direction:column;gap:2px}
 .pinfo b{font:16px var(--display);letter-spacing:.08em;text-transform:uppercase;overflow:hidden;white-space:nowrap}
 .pinfo span{font:700 12px var(--body);letter-spacing:.1em;color:var(--text-y)}
-.pinfo a{color:var(--line);font:700 12px var(--body)}
+.pbar.hide{opacity:0;pointer-events:none}
 .live{background:var(--sport);padding:0 5px;margin-right:6px;color:#fff}
 
 /* On Demand */
@@ -247,6 +251,7 @@ textarea{width:100%;resize:vertical}
     <div class="overlay" id="player" hidden>
       <div class="osd" id="osd"></div>
       <div id="media"></div>
+      <canvas class="snow" id="snow" width="160" height="120" hidden></canvas>
       <div class="pbar sh">
         <div class="pinfo" id="pinfo"></div>
         <div class="btns" id="pbtns"></div>
@@ -333,15 +338,14 @@ function simpsonsChannel(){
   return {id:uid(),num:61,call:'WTIC',cat:'general',items:[...s4.map((t,i)=>ep(t,4,i+1,1992)),...s5.map((t,i)=>ep(t,5,i+1,1993))]};
 }
 D.added=D.added||{};
-if(!D.added.official){
-  // Bob Ross Inc.'s official YouTube playlist of The Joy of Painting, Season 1 (1983)
-  const BR='https://www.youtube.com/playlist?list=PLAEQD0ULngi69x_7JbQvSMprLRK_KSVLu';
-  const s1=['A Walk in the Woods','Mt. McKinley','Ebony Sunset','Winter Mist','Quiet Stream','Winter Moon','Autumn Mountains','Peaceful Valley','Seascape','Mountain Lake','Winter Glow','Snowfall','Final Reflections'];
-  if(!D.channels.some(c=>c.num===24)) D.channels.push({id:uid(),num:24,call:'CPTV',cat:'general',noAds:true,items:s1.map((t,i)=>({id:uid(),title:'The Joy of Painting',kind:'show',mins:27,rating:'TV-G',year:1983,stars:0,desc:'\u201c'+t+'\u201d \u2022 Season 1, Episode '+(i+1),cc:true,isNew:false,src:BR,plIndex:i,official:'Bob Ross Inc.'}))});
-  // Power Rangers Official: Mighty Morphin Re-Ignition (4K remaster), Episode 1
-  const kids=D.channels.find(c=>c.cat==='kids');
-  if(kids) kids.items.unshift({id:uid(),title:'Mighty Morphin Power Rangers',kind:'kids',mins:21,rating:'TV-Y7',year:1993,stars:0,desc:'\u201cDay of the Dumpster\u201d \u2022 Re-Ignition, Episode 1',cc:true,isNew:false,src:'https://www.youtube.com/watch?v=v2WLFLQhj3o',official:'Power Rangers Official'});
-  D.added.official=1;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}
+if(!D.added.noyt){
+  const yt=u=>/youtu\.?be/i.test(String(u||''));
+  D.channels.forEach(c=>c.items=c.items.filter(p=>!(p.official&&yt(p.src))).map(p=>yt(p.src)?Object.assign(p,{src:'',plIndex:undefined}):p));
+  D.channels=D.channels.filter(c=>!(c.num===24&&c.call==='CPTV'&&!c.items.length));
+  D.ads=D.ads.filter(a=>!yt(a.src));
+  D.movies.forEach(m=>{if(yt(m.src))m.src=''});
+  if(yt(D.settings.promo))D.settings.promo='';
+  D.added.noyt=1;D.added.official=1;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}
 }
 if(!D.added.simpsons){if(!D.channels.some(c=>c.num===61))D.channels.push(simpsonsChannel());D.added.simpsons=1;try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}}
 function save(){try{localStorage.setItem(LS,JSON.stringify(D))}catch(e){}}
@@ -429,7 +433,7 @@ function flicker(){gview.classList.remove('flick');void gview.offsetWidth;gview.
 function key(k){
   if(!$('#setup').hidden) return;
   if(!$('#player').hidden){
-    if(k==='ArrowUp'||k==='PageUp') surf(1); else if(k==='ArrowDown'||k==='PageDown') surf(-1); else if(k==='Escape') closePlayer();
+    if(k==='ArrowUp'||k==='PageUp') surf(1); else if(k==='ArrowDown'||k==='PageDown') surf(-1); else if(k==='Escape') closePlayer(); else if(k==='Enter'){if(!tuneIn())peekBar()}
     return;
   }
   if(!$('#info').hidden){ if(k==='Escape') closeInfo(); else if(k==='Enter'){const b=$('#info .btn');b&&b.click()} return; }
@@ -489,48 +493,46 @@ function openSegInfo(s){
 const player=$('#player'),media=$('#media');
 let pTimer=null,osdT=null,curCh=null,vEl=null;
 const ytId=u=>(String(u||'').match(/(?:youtu\.be\/|[?&]v=|embed\/|shorts\/|live\/)([\w-]{11})/)||[])[1];
-const ytList=u=>(String(u||'').match(/[?&]list=([\w-]+)/)||[])[1];
-let ytApi=null;
-function loadYT(){if(ytApi)return ytApi;ytApi=new Promise((res,rej)=>{if(window.YT&&YT.Player)return res(YT);window.onYouTubeIframeAPIReady=()=>res(YT);const sc=document.createElement('script');sc.src='https://www.youtube.com/iframe_api';sc.onerror=rej;document.head.appendChild(sc);setTimeout(()=>rej(new Error('timeout')),6000)});ytApi.catch(()=>{ytApi=null});return ytApi}
-function mount(src,startSec,plIndex){
+const isYT=u=>/youtu\.?be/i.test(String(u||''));
+function mount(src,startSec){
   startSec=Math.max(0,Math.floor(startSec||0));
-  const list=ytList(src);
-  if(list&&typeof plIndex==='number'){
-    const token=Symbol();mount.token=token;
-    media.innerHTML='<div id="ytp" style="width:100%;height:100%"></div>';
-    const fallback=()=>{if(mount.token!==token)return;media.innerHTML=`<iframe src="https://www.youtube-nocookie.com/embed/videoseries?list=${list}&index=${plIndex}&start=${startSec}&autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Video"></iframe>`};
-    loadYT().then(Y=>{if(mount.token!==token||!document.getElementById('ytp'))return;
-      new Y.Player('ytp',{width:'100%',height:'100%',host:'https://www.youtube-nocookie.com',playerVars:{playsinline:1,rel:0,autoplay:1},
-        events:{onReady:e=>e.target.loadPlaylist({list,listType:'playlist',index:plIndex,startSeconds:startSec}),onError:fallback}})}).catch(fallback);
-    return 'https://www.youtube.com/playlist?list='+list;
-  }
-  mount.token=null;
-  const id=ytId(src);
-  if(id){media.innerHTML=`<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0&start=${startSec}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Video"></iframe>`;return `https://www.youtube.com/watch?v=${id}&t=${startSec}s`}
-  if(src){
-    if(!vEl){vEl=document.createElement('video');vEl.setAttribute('playsinline','');vEl.controls=true;vEl.autoplay=true;
-      vEl.addEventListener('error',()=>{if(vEl.getAttribute('src')&&!player.hidden)card('NO SIGNAL','This video wouldn\u2019t load. If you\u2019re in Claude\u2019s preview, outside videos are blocked \u2014 it plays on the live site.')})}
-    media.replaceChildren(vEl);vEl.src=src;
-    vEl.addEventListener('loadedmetadata',()=>{try{vEl.currentTime=startSec}catch(e){}vEl.play().catch(()=>{})},{once:true});
-    vEl.load();return src}
-  return null;
+  if(!src||isYT(src)) return null;
+  if(!vEl){vEl=document.createElement('video');vEl.setAttribute('playsinline','');vEl.setAttribute('webkit-playsinline','');
+    vEl.controls=false;vEl.autoplay=true;vEl.disablePictureInPicture=true;vEl.setAttribute('disableremoteplayback','');
+    vEl.addEventListener('error',()=>{if(vEl.getAttribute('src')&&!player.hidden)card('NO SIGNAL','This video wouldn\u2019t load. If you\u2019re in Claude\u2019s preview, outside videos are blocked \u2014 it plays on the live site.')})}
+  media.replaceChildren(vEl);vEl.src=src;
+  vEl.addEventListener('loadedmetadata',()=>{try{vEl.currentTime=startSec}catch(e){}vEl.play().catch(()=>showTune())},{once:true});
+  vEl.load();return src;
+}
+function showTune(){if(!vEl||player.hidden||media.querySelector('.tune'))return;const t=document.createElement('div');t.className='tune';t.innerHTML='<b>PRESS OK TO TUNE IN</b>';media.appendChild(t)}
+function tuneIn(){const t=media.querySelector('.tune');if(t){t.remove();vEl&&vEl.play().catch(()=>showTune());return true}return false}
+let snowT=0;
+function snow(ms){
+  if(reduced)return;const cv=$('#snow'),cx=cv.getContext('2d'),img=cx.createImageData(160,120),d=img.data,end=performance.now()+ms;cv.hidden=false;
+  cancelAnimationFrame(snowT);
+  const draw=()=>{for(let i=0;i<d.length;i+=4){const v=Math.random()*255|0;d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}cx.putImageData(img,0,0);
+    if(performance.now()<end)snowT=requestAnimationFrame(draw);else cv.hidden=true};
+  draw();
 }
 function card(title,msg){
   const cols=['#c0c0c0','#c0c000','#00c0c0','#00c000','#c000c0','#c00000','#0000c0'];
   media.innerHTML=`<div class="bars"><div class="c">${cols.map(c=>`<i style="background:${c}"></i>`).join('')}</div><div class="c" style="flex:.18">${cols.slice().reverse().map(c=>`<i style="background:${c};filter:brightness(.5)"></i>`).join('')}</div><div class="msg bevel sh"><b>${esc(title)}</b><span>${esc(msg)}</span></div></div>`;
 }
 function showOSD(ch){const o=$('#osd');o.innerHTML=`${ch.num}<span>${esc(ch.call)}</span>`;o.classList.remove('fade');clearTimeout(osdT);osdT=setTimeout(()=>o.classList.add('fade'),3500)}
+let barT=null;
+function peekBar(){const b=$('.pbar');b.classList.remove('hide');clearTimeout(barT);barT=setTimeout(()=>b.classList.add('hide'),4000)}
+media.addEventListener('click',()=>{if(!tuneIn())peekBar()});
 function setBar(title,sub,link,live){
-  $('#pinfo').innerHTML=`<b>${live?'<span class="live">LIVE</span>':''}${esc(title)}</b><span>${esc(sub)}</span>${link&&(ytId(link)||ytList(link))?`<a href="${esc(link)}" target="_blank" rel="noopener">Open on YouTube ↗</a>`:''}`;
+  $('#pinfo').innerHTML=`<b>${live?'<span class="live">LIVE</span>':''}${esc(title)}</b><span>${esc(sub)}</span>`;
   $('#pbtns').innerHTML=`${live?'<button class="btn" data-p="up">CH ▲</button><button class="btn" data-p="down">CH ▼</button>':''}<button class="btn dim" data-p="close">GUIDE</button>`;
 }
-$('#pbtns').addEventListener('click',e=>{const a=e.target.closest('[data-p]')?.dataset.p;if(a==='up')surf(1);else if(a==='down')surf(-1);else if(a==='close')closePlayer()});
+$('#pbtns').addEventListener('click',e=>{peekBar();const a=e.target.closest('[data-p]')?.dataset.p;if(a==='up')surf(1);else if(a==='down')surf(-1);else if(a==='close')closePlayer()});
 function openPlayer(){player.hidden=false}
-function closePlayer(){clearTimeout(pTimer);if(vEl){vEl.pause();vEl.removeAttribute('src')}media.innerHTML='';player.hidden=true;curCh=null;bumpIdle()}
+function closePlayer(){clearTimeout(pTimer);clearTimeout(barT);$('.pbar').classList.remove('hide');if(vEl){vEl.pause();vEl.removeAttribute('src')}media.innerHTML='';player.hidden=true;curCh=null;bumpIdle()}
 function playProgram(p,ch){
-  clearTimeout(pTimer);curCh=null;openPlayer();$('#osd').classList.add('fade');
-  const link=mount(p.src,0,p.plIndex);
-  if(!link) card('NO SIGNAL','No video is linked to “'+p.title+'” yet. Add a YouTube or video link in SETUP.');
+  clearTimeout(pTimer);curCh=null;openPlayer();$('#osd').classList.add('fade');snow(350);peekBar();
+  const link=mount(p.src,0);
+  if(!link) card('NO SIGNAL','No video is linked to “'+p.title+'” yet. Add an Internet Archive or video file link in SETUP.');
   setBar(label(p),(ch?'CH '+ch.num+' '+ch.call+' • ':'')+'From the beginning',link,false);
 }
 /* A slot = acts of the show with commercial breaks between them, plus a closing break.
@@ -547,14 +549,14 @@ function pieces(s){
 }
 function playLive(chId,cont){
   clearTimeout(pTimer);const ch=chById(chId);if(!ch)return;
-  if(!cont||curCh!==chId)showOSD(ch);curCh=chId;openPlayer();
+  if(!cont||curCh!==chId){showOSD(ch);snow(450);peekBar()}curCh=chId;openPlayer();
   const now=Date.now(),s=nowOn(ch);
   if(!s){card('NO SIGNAL','This channel has no programs yet.');setBar(ch.call,'CH '+ch.num,null,true);return}
   const off=(now-s.start)/1000,pcs=pieces(s);
   const pc=pcs.find(x=>off>=x.at&&off<x.at+x.len)||pcs[pcs.length-1];
   const into=off-pc.at,left=Math.max(1,pc.len-into),next=()=>playLive(chId,true),where='CH '+ch.num+' '+ch.call;
   if(pc.type==='show'){
-    const link=mount(s.p.src,pc.from+into,s.p.plIndex);
+    const link=mount(s.p.src,pc.from+into);
     if(!link) card('NO SIGNAL','No video linked to “'+(s.p.desc&&/^\u201c/.test(s.p.desc)?s.p.desc.split(' \u2022 ')[0]:s.p.title)+'” yet. The schedule keeps running — add a link in SETUP.');
     setBar(label(s.p),where+' • until '+fmt(s.end)+(s.p.desc&&s.p.desc.length<60?' • '+s.p.desc:''),link,true);
     pTimer=setTimeout(next,left*1000+300);return;
@@ -583,8 +585,8 @@ function surf(dir){const list=chs();if(!list.length)return;let i=list.findIndex(
 /* ---------- top half: clock, weather, promo ---------- */
 let promoI=0,lastMin=-1;
 function renderPromo(){
-  const pv=$('#preview'),pr=D.settings.promo,id=ytId(pr);
-  if(id){if(!pv.querySelector('iframe'))pv.innerHTML=`<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&playsinline=1" allow="autoplay" title="Promo"></iframe>`;return}
+  const pv=$('#preview'),pr=D.settings.promo;
+  if(pr&&!isYT(pr)){if(!pv.querySelector('video'))pv.innerHTML=`<video src="${esc(pr)}" muted autoplay loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>`;return}
   const items=[];chs().forEach(ch=>{const s=nowOn(ch);if(s)items.push({k:'NOW ON '+ch.num+' '+ch.call,t:label(s.p),s:'Until '+fmt(s.end)});const n=s&&segs(ch,s.end,s.end+1)[0];if(n&&n.p.kind==='movie')items.push({k:'TONIGHT ON '+ch.num,t:label(n.p),s:fmt(n.start)})});
   D.guideAds.filter(Boolean).forEach(a=>items.push({k:'ADVERTISEMENT',t:a,s:''}));
   if(!items.length){pv.innerHTML='<div class="promo sh"><span class="t">Tracking Error</span></div>';return}
@@ -640,7 +642,7 @@ function openMovieInfo(m){
   info.innerHTML=`<div class="panel bevel sh" role="dialog" aria-label="${esc(m.title)}"><div class="ph">ON DEMAND • ${esc(m.genre||'Movie')}</div><h2>${esc(m.title)}</h2>
    <div class="meta">${esc(m.year||'')}${m.stars?' • '+stars(m.stars):''} ${tags(m)} <span>${m.mins?Math.round(m.mins):'?'} MIN</span>${m.format?` <span class="tag">${esc(m.format.toUpperCase())}</span>`:''}</div><p>${esc(m.desc||'No description yet.')}</p>
    ${m.director||m.cast?.length?`<p class="credits">${m.director?'Directed by '+esc(m.director):''}${m.director&&m.cast?.length?' • ':''}${m.cast?.length?'With '+esc(m.cast.slice(0,4).join(', ')):''}</p>`:''}
-   <div class="btns">${m.src?'<button class="btn go" data-a="play">PLAY</button>':'<button class="btn dim" disabled>NOT RIPPED YET</button>'}${m.trailer?`<a class="btn" href="${esc(m.trailer)}" target="_blank" rel="noopener" style="text-decoration:none;color:#fff">TRAILER ↗</a>`:''}<button class="btn" data-a="edit">${m.src?'EDIT':'ADD VIDEO LINK'}</button><button class="btn dim" data-a="close">CLOSE</button></div>
+   <div class="btns">${m.src?'<button class="btn go" data-a="play">PLAY</button>':'<button class="btn dim" disabled>NOT RIPPED YET</button>'}<button class="btn" data-a="edit">${m.src?'EDIT':'ADD VIDEO LINK'}</button><button class="btn dim" data-a="close">CLOSE</button></div>
    <div class="inline"><select id="addToCh" aria-label="Channel">${chs().map(c=>`<option value="${c.id}">${c.num} ${esc(c.call)}</option>`).join('')}</select><button class="btn" data-a="add">ADD TO CHANNEL</button></div></div>`;
   info.hidden=false;
   info.onclick=e=>{const a=e.target.closest('[data-a]')?.dataset.a;if(!a)return;
@@ -753,16 +755,16 @@ function renderSetup(){
       <label>Year<input name="year" id="pYear" value="${esc(e.year||'')}"></label>
       <label>Stars (0–5)<input name="stars" id="pStars" type="number" min="0" max="5" step=".5" value="${esc(e.stars??3)}"></label>
       <label class="chk"><input type="checkbox" name="isNew" id="pNew" ${e.isNew?'checked':''}> NEW episode</label>
-      <label class="wide">Video link (YouTube or direct .mp4)<input name="src" id="pSrc" value="${esc(e.src||'')}" placeholder="https://www.youtube.com/watch?v=…"></label>
+      <label class="wide">Video link (archive.org file or your own .mp4)<input name="src" id="pSrc" value="${esc(e.src||'')}" placeholder="https://archive.org/download/…/episode.mp4"></label>
       <label class="wide">Description<textarea name="desc" id="pDesc" rows="2">${esc(e.desc||'')}</textarea></label>
       <div class="btns wide"><button class="btn go">${ep?'SAVE CHANGES':'ADD TO LINEUP'}</button>${ep?'<button type="button" class="btn dim" data-cancel>CANCEL</button>':''}</div></form>`;
     b+=`<h3>ADD A MOVIE FROM YOUR LIBRARY</h3><div class="inline"><select id="libM" aria-label="Movie">${D.movies.map(m=>opt(m.id,'',m.title)).join('')}</select><select id="libC" aria-label="Channel">${chs().map(c=>opt(c.id,'',c.num+' '+c.call)).join('')}</select><button class="btn" data-libadd>ADD</button></div>`;
     b+=`<h3>NEW CHANNEL</h3><form class="form" id="fCh"><label>Number<input name="num" id="cNum" type="number" min="1" required></label><label>Call sign<input name="call" id="cCall" maxlength="6" required placeholder="MTV"></label>
       <label>Category<select name="cat" id="cCat">${CATS.map(c=>opt(c,'general')).join('')}</select></label><label>PPV price (optional)<input name="ppv" id="cPpv" placeholder="3.99"></label><label class="chk"><input type="checkbox" name="noAds" id="cNoAds"> Commercial-free</label><div class="btns wide"><button class="btn go">ADD CHANNEL</button></div></form>`;
   }else if(tab==='commercials'){
-    b+=`<p class="note">Commercials fill the gap between a show’s runtime and the end of its slot, in order, looping. Paste YouTube links to old ads and set each one’s length in seconds.</p>`;
+    b+=`<p class="note">Commercials fill the gap between a show’s runtime and the end of its slot, in order, looping. The easiest way to add them is SETUP \u2192 Archive, which brings in whole collections with their real lengths. You can also paste a single video file link here.</p>`;
     b+=`<ol class="list">${D.ads.map((a,i)=>`<li><span style="flex:1;color:#fff;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title||'Commercial')}</span><span>${a.type==='bumper'?'BUMPER \u2022 ':''}${Math.round(a.secs||30)}s</span><button class="sm" data-rmad="${i}" aria-label="Remove">✕</button></li>`).join('')||'<li><span>No commercials yet.</span></li>'}</ol>`;
-    b+=`<form class="form" id="fAd"><label>Name<input name="title" id="aTitle" placeholder="1996 cereal ad"></label><label>Length (sec)<input name="secs" id="aSecs" type="number" min="5" value="30"></label><label class="wide">YouTube link<input name="src" id="aSrc" required placeholder="https://youtu.be/…"></label><div class="btns wide"><button class="btn go">ADD COMMERCIAL</button></div></form>`;
+    b+=`<form class="form" id="fAd"><label>Name<input name="title" id="aTitle" placeholder="1996 cereal ad"></label><label>Length (sec)<input name="secs" id="aSecs" type="number" min="5" value="30"></label><label class="wide">Video link<input name="src" id="aSrc" required placeholder="https://archive.org/download/…/ad.mp4"></label><div class="btns wide"><button class="btn go">ADD COMMERCIAL</button></div></form>`;
   }else if(tab==='movies'){
     const em=D.movies.find(m=>m.id===ed.mid),e=em||{};
     const nSample=D.movies.filter(isSample).length,nArc=D.movies.filter(m=>m.arc).length;
@@ -799,7 +801,7 @@ function renderSetup(){
     }
   }else if(tab==='settings'){
     b+=`<form class="form" id="fSet"><label>Weather town<input name="town" id="sTown" value="${esc(D.settings.town)}"></label><label>Temperature °F<input name="temp" id="sTemp" type="number" value="${esc(D.settings.temp)}"></label>
-      <label class="wide">Preview window clip (YouTube, plays muted on loop)<input name="promo" id="sPromo" value="${esc(D.settings.promo)}" placeholder="Leave empty for rotating Now/Tonight cards"></label>
+      <label class="wide">Preview window clip (video file link, plays muted on loop)<input name="promo" id="sPromo" value="${esc(D.settings.promo)}" placeholder="Leave empty for rotating Now/Tonight cards"></label>
       <label class="wide">Guide ad lines (one per line)<textarea name="guideAds" id="sAds" rows="4">${esc(D.guideAds.join('\n'))}</textarea></label>
       <div class="btns wide"><button class="btn go">SAVE SETTINGS</button></div></form>`;
   }else{
@@ -845,13 +847,14 @@ setup.addEventListener('change',e=>{
 setup.addEventListener('submit',e=>{
   e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),id=e.target.id;
   if(id==='fIA'){iaLookup(f.url);return}
+  if([f.src,f.promo].some(isYT)){toast('YOUTUBE LINKS DON\u2019T PLAY ON THIS TV \u2014 USE AN ARCHIVE.ORG OR VIDEO FILE LINK');return}
   if(id==='fIAimp'){const n=iaImport(f);toast(n?`IMPORTED ${n} ${f.as==='episode'?'EPISODES':f.as==='movie'?'MOVIES':f.as==='bumper'?'BUMPERS':'COMMERCIALS'}`:'NOTHING NEW TO IMPORT');changed();return}
   if(id==='fProg'){const ch=chById(f.ch);if(!ch)return;const data={title:f.title.trim(),kind:f.kind,mins:+f.mins||22,rating:f.rating.trim(),year:f.year.trim(),stars:+f.stars||0,isNew:!!f.isNew,src:f.src.trim(),desc:f.desc.trim(),cc:true};
     if(f.pid){D.channels.forEach(c=>{const i=c.items.findIndex(p=>p.id===f.pid);if(i>-1)c.items.splice(i,1)});ch.items.push(Object.assign({id:f.pid},data));toast('SAVED')}
     else{ch.items.push(Object.assign({id:uid()},data));toast(data.title.toUpperCase()+' ADDED TO CH '+ch.num)}
     ed={ch:ch.id};}
   else if(id==='fCh'){const num=+f.num;if(D.channels.some(c=>c.num===num)){toast('CHANNEL '+num+' ALREADY EXISTS');return}D.channels.push({id:uid(),num,call:f.call.trim().toUpperCase(),cat:f.cat,ppv:f.ppv.trim()||undefined,noAds:!!f.noAds,items:[]});toast('CHANNEL '+num+' ADDED')}
-  else if(id==='fAd'){if(!ytId(f.src)&&!/^https?:/.test(f.src)){toast('PASTE A YOUTUBE OR VIDEO LINK');return}D.ads.push({title:f.title.trim(),src:f.src.trim(),secs:+f.secs||30});toast('COMMERCIAL ADDED')}
+  else if(id==='fAd'){if(!/^https?:/.test(f.src)){toast('PASTE A VIDEO LINK');return}D.ads.push({title:f.title.trim(),src:f.src.trim(),secs:+f.secs||30});toast('COMMERCIAL ADDED')}
   else if(id==='fMov'){const data={title:f.title.trim(),year:f.year.trim(),genre:f.genre.trim()||'Movies',rating:f.rating.trim(),mins:+f.mins||100,stars:+f.stars||0,src:f.src.trim(),desc:f.desc.trim(),kind:'movie',cc:true,isNew:false};
     if(f.mid){const m=D.movies.find(x=>x.id===f.mid);if(m)Object.assign(m,data);toast('SAVED')}else{D.movies.push(Object.assign({id:uid(),mine:true},data));toast(data.title.toUpperCase()+' ADDED')}ed={}}
   else if(id==='fSet'){Object.assign(D.settings,{town:f.town.trim(),temp:f.temp===''?'':+f.temp,promo:f.promo.trim()});D.guideAds=f.guideAds.split('\n').map(s=>s.trim()).filter(Boolean);$('#preview').innerHTML='';toast('SETTINGS SAVED')}
